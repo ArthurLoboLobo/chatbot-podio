@@ -11,10 +11,16 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = "podio-ajudante-token";
+
+// Credenciais (carregadas do arquivo .env)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
 // Inicializa o cliente do Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+// --- FUNÇÕES PRINCIPAIS DO BOT ---
 
 // Função para chamar a IA e obter uma dica
 async function getAIGeneratedHint(studentCode) {
@@ -44,6 +50,31 @@ async function getAIGeneratedHint(studentCode) {
   }
 }
 
+// Função para enviar uma mensagem via API do WhatsApp
+async function sendWhatsAppMessage(recipientNumber, messageText) {
+  const url = `https://graph.facebook.com/v20.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const headers = {
+    'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+    'Content-Type': 'application/json'
+  };
+  const body = JSON.stringify({
+    messaging_product: "whatsapp",
+    to: recipientNumber,
+    text: { body: messageText }
+  });
+
+  try {
+    const response = await fetch(url, { method: 'POST', headers: headers, body: body });
+    const data = await response.json();
+    console.log("Mensagem enviada com sucesso:", data);
+  } catch (error) {
+    console.error("Erro ao enviar mensagem pelo WhatsApp:", error);
+  }
+}
+
+
+// --- ROTAS DO SERVIDOR ---
+
 // Rota principal
 app.get('/', (req, res) => {
   res.send('Servidor do Chatbot Pódio no ar!');
@@ -66,25 +97,30 @@ app.get('/whatsapp-webhook', (req, res) => {
 
 // Rota para receber mensagens do WhatsApp
 app.post('/whatsapp-webhook', async (req, res) => {
-  console.log("Recebemos uma mensagem!");
+  console.log("Recebemos uma notificação do webhook!");
   console.log(JSON.stringify(req.body, null, 2));
 
-  // Extrai a mensagem do aluno do corpo da requisição
-  // A estrutura pode variar um pouco, esta é a mais comum
-  const studentMessage = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body;
-  
-  if (studentMessage) {
-    console.log(`Mensagem do aluno: "${studentMessage}"`);
+  try {
+    const messageInfo = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     
-    // Chama a IA para gerar uma resposta
-    const aiResponse = await getAIGeneratedHint(studentMessage);
-    console.log(`Resposta da IA: "${aiResponse}"`);
+    if (messageInfo) {
+      const studentMessage = messageInfo.text?.body;
+      const studentNumber = messageInfo.from;
 
-    // TODO: Adicionar a lógica para ENVIAR a aiResponse de volta para o aluno
-    
+      console.log(`Mensagem de ${studentNumber}: "${studentMessage}"`);
+      
+      // 1. Pensa em uma resposta com a IA
+      const aiResponse = await getAIGeneratedHint(studentMessage);
+      console.log(`Resposta da IA: "${aiResponse}"`);
+
+      // 2. Envia a resposta de volta para o aluno
+      await sendWhatsAppMessage(studentNumber, aiResponse);
+    }
+  } catch (error) {
+    console.error("Erro ao processar o webhook:", error);
   }
 
-  res.sendStatus(200);
+  res.sendStatus(200); // Responde 200 OK para a Meta, confirmando o recebimento
 });
 
 // Inicia o servidor
