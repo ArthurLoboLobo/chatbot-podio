@@ -25,7 +25,7 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 // Função para chamar a IA e obter uma dica
 async function getAIGeneratedHint(studentCode) {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const prompt = `
       Você é um mentor de programação para a Olimpíada Brasileira de Informática (OBI).
       Seu nome é Pódio Ajudante. Seu objetivo é ajudar um aluno a encontrar um erro em seu código C++, mas sem dar a resposta diretamente.
