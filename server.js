@@ -1,50 +1,93 @@
-// Importa o framework Express
-const express = require('express');
-const app = express();
+// Carrega as variáveis de ambiente do arquivo .env
+require('dotenv').config();
 
-// Middleware para entender o corpo das requisições em JSON
+// Importações
+const express = require('express');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+// Inicialização
+const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const VERIFY_TOKEN = "podio-ajudante-token"; // Crie qualquer senha aqui
+const VERIFY_TOKEN = "podio-ajudante-token";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Rota principal para testar se o servidor está no ar
+// Inicializa o cliente do Gemini AI
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+// Função para chamar a IA e obter uma dica
+async function getAIGeneratedHint(studentCode) {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const prompt = `
+      Você é um mentor de programação para a Olimpíada Brasileira de Informática (OBI).
+      Seu nome é Pódio Ajudante. Seu objetivo é ajudar um aluno a encontrar um erro em seu código C++, mas sem dar a resposta diretamente.
+
+      Analise o código do aluno abaixo.
+      Se encontrar um erro, explique o problema de forma conceitual e sugira um caso de teste que faria o código falhar.
+      NÃO forneça o código corrigido. Seja breve, amigável e direto ao ponto, como se estivesse falando com um jovem de 15 anos.
+
+      Código do aluno:
+      \`\`\`cpp
+      ${studentCode}
+      \`\`\`
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    return text;
+  } catch (error) {
+    console.error("Erro na API do Gemini:", error);
+    return "Desculpe, não consegui analisar o código agora. Tente novamente em alguns instantes.";
+  }
+}
+
+// Rota principal
 app.get('/', (req, res) => {
   res.send('Servidor do Chatbot Pódio no ar!');
 });
 
-// Rota para a verificação do Webhook (handshake com a Meta)
-// Documentação: https://developers.facebook.com/docs/graph-api/webhooks/getting-started#verification-requests
+// Rota de verificação do Webhook
 app.get('/whatsapp-webhook', (req, res) => {
-  // Extrai os parâmetros de verificação da requisição
   let mode = req.query['hub.mode'];
   let token = req.query['hub.verify_token'];
   let challenge = req.query['hub.challenge'];
 
-  // Verifica se o modo e o token estão presentes e corretos
   if (mode && token === VERIFY_TOKEN) {
-    // Responde com o 'challenge' para confirmar o Webhook
     console.log("Webhook verificado com sucesso!");
     res.status(200).send(challenge);
   } else {
-    // Se o token estiver incorreto, recusa a conexão
     console.log("Falha na verificação do Webhook.");
     res.sendStatus(403);
   }
 });
 
-// Rota para receber as mensagens do WhatsApp
-// Documentação: https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components
-app.post('/whatsapp-webhook', (req, res) => {
+// Rota para receber mensagens do WhatsApp
+app.post('/whatsapp-webhook', async (req, res) => {
   console.log("Recebemos uma mensagem!");
-  console.log(JSON.stringify(req.body, null, 2)); // Imprime o corpo da mensagem para depuração
+  console.log(JSON.stringify(req.body, null, 2));
 
-  // Aqui, no futuro, colocaremos a lógica para responder ao aluno
+  // Extrai a mensagem do aluno do corpo da requisição
+  // A estrutura pode variar um pouco, esta é a mais comum
+  const studentMessage = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body;
+  
+  if (studentMessage) {
+    console.log(`Mensagem do aluno: "${studentMessage}"`);
+    
+    // Chama a IA para gerar uma resposta
+    const aiResponse = await getAIGeneratedHint(studentMessage);
+    console.log(`Resposta da IA: "${aiResponse}"`);
 
-  res.sendStatus(200); // Responde ao WhatsApp que a mensagem foi recebida com sucesso
+    // TODO: Adicionar a lógica para ENVIAR a aiResponse de volta para o aluno
+    
+  }
+
+  res.sendStatus(200);
 });
 
-// Inicia o servidor para "ouvir" na porta definida
+// Inicia o servidor
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
