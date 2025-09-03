@@ -57,6 +57,7 @@ async function sendWhatsAppMessage(recipientNumber, messageText) {
   }
 }
 
+
 // --- ROTAS DO SERVIDOR ---
 
 // Rota principal
@@ -79,9 +80,7 @@ app.get('/whatsapp-webhook', (req, res) => {
 // Rota para receber mensagens do WhatsApp
 app.post('/whatsapp-webhook', async (req, res) => {
   console.log("Recebemos uma notificação do webhook!");
-  // Imprime o corpo da requisição para depuração
-  // console.log(JSON.stringify(req.body, null, 2));
-
+  
   try {
     const messageInfo = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (messageInfo) {
@@ -90,24 +89,34 @@ app.post('/whatsapp-webhook', async (req, res) => {
 
       console.log(`Mensagem de ${studentNumber}: "${studentMessage}"`);
 
-      // 1. Gerencia o histórico da conversa
+      // Gerencia a conversa e obtém a resposta da IA
       if (!conversations[studentNumber]) {
-        // Se for a primeira mensagem, inicia um novo chat com a instrução de sistema
         conversations[studentNumber] = geminiModel.startChat({
           history: [{ role: "user", parts: [{ text: SYSTEM_INSTRUCTION }] }, { role: "model", parts: [{ text: "Entendido! Sou o Pódio Ajudante. Estou pronto para ajudar. Qual o seu desafio de hoje?" }] }],
           generationConfig: { maxOutputTokens: 1000 },
         });
       }
       const chat = conversations[studentNumber];
-
-      // 2. Envia a mensagem do aluno para a IA (com o histórico) e obtém a resposta
-      const result = await chat.sendMessage(studentMessage);
-      const response = await result.response;
-      const aiResponse = response.text();
+      
+      // Manda a mensagem para a IA e trata os erros
+      let aiResponse;
+      try {
+        const result = await chat.sendMessage(studentMessage);
+        const response = await result.response;
+        aiResponse = response.text();
+      } catch (error) {
+        console.error("Erro na API do Gemini:", error);
+        const errorString = String(error);
+        if (errorString.includes("503") || errorString.toLowerCase().includes("overloaded")) {
+          aiResponse = "O servidor da IA parece estar sobrecarregado no momento. Por favor, espere alguns segundos e envie sua mensagem novamente.";
+        } else {
+          aiResponse = "Desculpe, ocorreu um erro ao processar sua solicitação. Tente novamente em alguns instantes.";
+        }
+      }
       
       console.log(`Resposta da IA: "${aiResponse}"`);
 
-      // 3. Envia a resposta da IA de volta para o aluno
+      // Envia a resposta de volta para o aluno
       await sendWhatsAppMessage(studentNumber, aiResponse);
     }
   } catch (error) {
