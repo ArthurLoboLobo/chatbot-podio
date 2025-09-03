@@ -77,7 +77,7 @@ async function sendWhatsAppMessage(recipientNumber, messageText) {
 
 // Rota principal
 app.get('/', (req, res) => {
-  res.send('Servidor do Chatbot Pódio no ar!');
+  res.send('Servidor do Chatbot Pódio no ar! oi oi');
 });
 
 // Rota de verificação do Webhook
